@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Darts Pro Scoreboard</title>
+<style>
+body { margin:0; font-family:Arial, sans-serif; background:#0f172a; color:white; }
+.container { max-width:1200px; margin:auto; padding:20px; }
+h1 { text-align:center; margin-bottom:20px; }
+.card { background:#1e293b; padding:20px; border-radius:16px; box-shadow:0 6px 25px rgba(0,0,0,0.4); margin-bottom:20px; }
+button { background:#6366f1; border:none; padding:10px 16px; border-radius:10px; color:white; cursor:pointer; font-weight:bold; }
+button:hover { opacity:0.9; }
+button.danger { background:#dc2626; }
+input, select { padding:8px; border-radius:8px; border:none; margin-right:10px; }
+.players { display:grid; grid-template-columns:repeat(auto-fit,minmax(250px,1fr)); gap:15px; }
+.player.active { background:#4f46e5; }
+.score { font-size:30px; margin-top:10px; }
+.stats { font-size:14px; margin-top:8px; opacity:0.8; }
+.winner { background:#16a34a; text-align:center; font-size:24px; }
+table { width:100%; border-collapse:collapse; margin-top:15px; }
+th, td { padding:8px; text-align:center; border-bottom:1px solid #334155; }
+th { background:#334155; }
+</style>
+</head>
+<body>
+<div class="container">
+<h1>🎯 Darts Pro Scoreboard</h1>
+
+<div class="card">
+<select id="gameType">
+<option value="501">501</option>
+<option value="301">301</option>
+</select>
+<label><input type="checkbox" id="doubleOut" checked> Double Out obligatoire</label>
+<input type="text" id="playerName" placeholder="Nom du joueur">
+<button onclick="addPlayer()">Ajouter</button>
+<button onclick="resetGame()" class="danger">Nouvelle partie</button>
+</div>
+
+<div class="players" id="players"></div>
+
+<div class="card" id="controls" style="display:none;">
+<input type="number" id="dartInput" placeholder="Score fléchette">
+<label><input type="checkbox" id="isDouble"> Double</label>
+<button onclick="addScore()">Valider</button>
+<span id="dartCount"></span>
+</div>
+
+<div class="card" id="winnerCard" style="display:none;"></div>
+<div class="card" id="finalTable" style="display:none;"></div>
+
+<div class="card">
+<button onclick="saveGame()">Sauvegarder</button>
+<button onclick="loadGame()">Charger</button>
+<button class="danger" onclick="deleteSave()">Supprimer sauvegarde</button>
+</div>
+</div>
+
+<script>
+let players=[];
+let currentPlayer=0;
+let dartsThrown=0;
+let winner=null;
+
+function startingScore(){ return document.getElementById("gameType").value==="301"?301:501; }
+
+function addPlayer(){
+ const name=document.getElementById("playerName").value.trim();
+ if(!name) return;
+ players.push({
+   name,
+   score:startingScore(),
+   throws:0,
+   totalPoints:0,
+   rounds:0
+ });
+ document.getElementById("playerName").value="";
+ document.getElementById("controls").style.display="block";
+ render();
+}
+
+function render(){
+ const container=document.getElementById("players");
+ container.innerHTML="";
+ players.forEach((p,i)=>{
+   const div=document.createElement("div");
+   div.className="card player"+(i===currentPlayer?" active":"");
+   div.innerHTML=`<strong>${p.name}</strong>
+   <div class="score">${p.score}</div>
+   <div class="stats">
+   Lancers: ${p.throws}<br>
+   Moyenne / fléchette: ${p.throws? (p.totalPoints/p.throws).toFixed(2):0}<br>
+   Moyenne / tour: ${p.rounds? (p.totalPoints/p.rounds).toFixed(2):0}
+   </div>`;
+   container.appendChild(div);
+ });
+ document.getElementById("dartCount").innerText=`Fléchettes: ${dartsThrown}/3`;
+}
+
+function addScore(){
+ if(winner) return;
+ const value=parseInt(document.getElementById("dartInput").value);
+ if(isNaN(value)||value<0) return;
+ const isDouble=document.getElementById("isDouble").checked;
+ const player=players[currentPlayer];
+ const newScore=player.score-value;
+
+ if(newScore<0){ endTurn(); return; }
+
+ if(newScore===0){
+   if(document.getElementById("doubleOut").checked && !isDouble){
+     endTurn(); return;
+   }
+   player.totalPoints+=value;
+   player.throws++;
+   player.rounds++;
+   player.score=0;
+   showWinner(player);
+   return;
+ }
+
+ player.score=newScore;
+ player.totalPoints+=value;
+ player.throws++;
+ dartsThrown++;
+
+ if(dartsThrown===3){
+   player.rounds++;
+   endTurn();
+ }
+
+ document.getElementById("dartInput").value="";
+ document.getElementById("isDouble").checked=false;
+ render();
+}
+
+function endTurn(){
+ dartsThrown=0;
+ currentPlayer=(currentPlayer+1)%players.length;
+ render();
+}
+
+function showWinner(player){
+ winner=player.name;
+ document.getElementById("winnerCard").style.display="block";
+ document.getElementById("winnerCard").className="card winner";
+ document.getElementById("winnerCard").innerHTML=`🏆 ${player.name} a gagné !`;
+ generateFinalTable();
+}
+
+function generateFinalTable(){
+ const tableDiv=document.getElementById("finalTable");
+ tableDiv.style.display="block";
+ let sorted=[...players].sort((a,b)=>a.score-b.score);
+ let html="<h2>Classement final</h2><table><tr><th>#</th><th>Joueur</th><th>Score</th><th>Moyenne</th><th>Lancers</th></tr>";
+ sorted.forEach((p,i)=>{
+   html+=`<tr><td>${i+1}</td><td>${p.name}</td><td>${p.score}</td><td>${p.throws?(p.totalPoints/p.throws).toFixed(2):0}</td><td>${p.throws}</td></tr>`;
+ });
+ html+="</table>";
+ tableDiv.innerHTML=html;
+}
+
+function resetGame(){ players=[]; currentPlayer=0; dartsThrown=0; winner=null;
+ document.getElementById("players").innerHTML="";
+ document.getElementById("winnerCard").style.display="none";
+ document.getElementById("finalTable").style.display="none";
+}
+
+function saveGame(){
+ localStorage.setItem("dartsProSave",JSON.stringify({players,currentPlayer,dartsThrown,winner,gameType:document.getElementById("gameType").value,doubleOut:document.getElementById("doubleOut").checked}));
+ alert("Partie sauvegardée");
+}
+
+function loadGame(){
+ const data=JSON.parse(localStorage.getItem("dartsProSave"));
+ if(!data) return alert("Aucune sauvegarde");
+ players=data.players;
+ currentPlayer=data.currentPlayer;
+ dartsThrown=data.dartsThrown;
+ winner=data.winner;
+ document.getElementById("gameType").value=data.gameType;
+ document.getElementById("doubleOut").checked=data.doubleOut;
+ document.getElementById("controls").style.display="block";
+ if(winner){ generateFinalTable(); }
+ render();
+}
+
+function deleteSave(){ localStorage.removeItem("dartsProSave"); alert("Sauvegarde supprimée"); }
+</script>
+</body>
+</html>
