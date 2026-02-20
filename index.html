@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>Darts Pro Elite</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+<style>
+:root{
+--bg:#0b1220;
+--card:#121a2b;
+--accent:#7c3aed;
+--accent2:#4f46e5;
+--danger:#ef4444;
+--success:#22c55e;
+}
+*{box-sizing:border-box;}
+body{margin:0;font-family:'Inter',sans-serif;background:linear-gradient(180deg,#0b1220,#111827);color:white;}
+.container{max-width:900px;margin:auto;padding:20px;}
+h1{text-align:center;font-weight:800;font-size:28px;margin-bottom:20px;}
+.card{background:var(--card);padding:18px;border-radius:18px;margin-bottom:16px;box-shadow:0 10px 30px rgba(0,0,0,0.4);}
+button{background:linear-gradient(135deg,var(--accent),var(--accent2));border:none;padding:12px;border-radius:12px;color:white;font-weight:600;cursor:pointer;width:100%;margin-top:8px;font-size:15px;transition:0.2s;}
+button:hover{transform:scale(1.02);} 
+button.danger{background:var(--danger);} 
+input,select{padding:12px;border-radius:10px;border:none;width:100%;margin-top:8px;font-size:15px;background:#1f2937;color:white;}
+.players{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;}
+.player{transition:0.2s;}
+.player.active{outline:2px solid var(--accent);} 
+.score{font-size:26px;font-weight:700;margin-top:6px;}
+.stats{font-size:12px;opacity:0.85;margin-top:6px;}
+.cricket-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:4px;font-size:11px;margin-top:6px;}
+table{width:100%;border-collapse:collapse;margin-top:10px;font-size:13px;}
+th,td{padding:6px;text-align:center;border-bottom:1px solid #1f2937;}
+th{background:#1f2937;}
+.badge{padding:4px 8px;border-radius:999px;font-size:11px;background:var(--accent);display:inline-block;margin-top:4px;}
+</style>
+</head>
+<body>
+<div class="container">
+<h1>🎯 Darts Pro Elite</h1>
+
+<div class="card">
+<select id="gameType">
+<option value="501">501</option>
+<option value="301">301</option>
+<option value="Cricket">Cricket</option>
+</select>
+<select id="bestOf">
+<option value="1">Match simple</option>
+<option value="3">Best of 3</option>
+<option value="5">Best of 5</option>
+<option value="7">Best of 7</option>
+</select>
+<label><input type="checkbox" id="doubleOut" checked> Double Out (x01)</label>
+<input type="text" id="playerName" placeholder="Nom du joueur">
+<button onclick="addPlayer()">Ajouter joueur</button>
+<button onclick="resetGame()" class="danger">Réinitialiser</button>
+</div>
+
+<div class="players" id="players"></div>
+
+<div class="card" id="controls" style="display:none;">
+<input type="number" id="dartInput" placeholder="Score ou numéro Cricket">
+<label><input type="checkbox" id="isDouble"> Double</label>
+<button onclick="addScore()">Valider</button>
+<div id="dartCount"></div>
+</div>
+
+<div class="card" id="winnerCard" style="display:none;"></div>
+<div class="card" id="historyCard"></div>
+
+<audio id="sound180" src="https://assets.mixkit.co/sfx/preview/mixkit-game-show-bell-ding-843.mp3"></audio>
+<audio id="soundBust" src="https://assets.mixkit.co/sfx/preview/mixkit-retro-arcade-lose-2027.mp3"></audio>
+<audio id="soundWin" src="https://assets.mixkit.co/sfx/preview/mixkit-winning-chimes-2015.mp3"></audio>
+</div>
+
+<script>
+let players=[];
+let currentPlayer=0;
+let dartsThrown=0;
+let winner=null;
+let legsToWin=1;
+let history=JSON.parse(localStorage.getItem("dartsHistory"))||{};
+
+function startingScore(){return document.getElementById("gameType").value==="301"?301:501;}
+
+function addPlayer(){
+ const name=document.getElementById("playerName").value.trim();
+ if(!name)return;
+ players.push({
+   name,
+   score:document.getElementById("gameType").value==="Cricket"?{15:0,16:0,17:0,18:0,19:0,20:0,25:0}:startingScore(),
+   legs:0,
+   throws:0,
+   totalPoints:0
+ });
+ if(!history[name])history[name]={games:0,wins:0,totalThrows:0,totalPoints:0};
+ document.getElementById("controls").style.display="block";
+ legsToWin=Math.ceil(document.getElementById("bestOf").value/2);
+ document.getElementById("playerName").value="";
+ render();
+}
+
+function render(){
+ const container=document.getElementById("players");
+ container.innerHTML="";
+ const type=document.getElementById("gameType").value;
+ players.forEach((p,i)=>{
+   const div=document.createElement("div");
+   div.className="card player"+(i===currentPlayer?" active":"");
+   div.innerHTML=`<strong>${p.name}</strong><div class='badge'>Legs: ${p.legs}/${legsToWin}</div>`;
+
+   if(type==="Cricket"){
+     const grid=document.createElement("div");
+     grid.className="cricket-grid";
+     for(let key in p.score){grid.innerHTML+=`<div>${key}: ${"✔".repeat(p.score[key])}</div>`;}
+     div.appendChild(grid);
+   }else{
+     div.innerHTML+=`<div class='score'>${p.score}</div>`;
+   }
+
+   div.innerHTML+=`<div class='stats'>🎯 ${p.throws} lancers<br>📊 Moy ${(p.throws?(p.totalPoints/p.throws).toFixed(2):0)}</div>`;
+   container.appendChild(div);
+ });
+ document.getElementById("dartCount").innerText=`Tour: ${dartsThrown}/3`;
+ renderHistory();
+}
+
+function addScore(){
+ if(winner)return;
+ const value=parseInt(document.getElementById("dartInput").value);
+ if(isNaN(value))return;
+ const type=document.getElementById("gameType").value;
+ const player=players[currentPlayer];
+
+ if(type!=="Cricket" && value===180)document.getElementById("sound180").play();
+
+ if(type==="Cricket"){
+   if(player.score[value]!==undefined){player.score[value]=Math.min(player.score[value]+1,3);player.throws++;}
+   if(Object.values(player.score).every(v=>v===3))legWin(player);
+ }else{
+   const newScore=player.score-value;
+   if(newScore<0){document.getElementById("soundBust").play();endTurn();return;}
+   if(newScore===0){
+     if(document.getElementById("doubleOut").checked&&!document.getElementById("isDouble").checked){document.getElementById("soundBust").play();endTurn();return;}
+     player.totalPoints+=value;player.throws++;player.score=0;legWin(player);return;
+   }
+   player.score=newScore;player.totalPoints+=value;player.throws++;
+ }
+
+ dartsThrown++;
+ if(dartsThrown===3)endTurn();
+ document.getElementById("dartInput").value="";
+ document.getElementById("isDouble").checked=false;
+ render();
+}
+
+function legWin(player){
+ player.legs++;
+ document.getElementById("soundWin").play();
+ if(player.legs>=legsToWin){matchWin(player);}else{resetLeg();}
+}
+
+function matchWin(player){
+ winner=player.name;
+ history[player.name].wins++;
+ history[player.name].games++;
+ history[player.name].totalThrows+=player.throws;
+ history[player.name].totalPoints+=player.totalPoints;
+ localStorage.setItem("dartsHistory",JSON.stringify(history));
+ document.getElementById("winnerCard").style.display="block";
+ document.getElementById("winnerCard").innerHTML=`🏆 ${player.name} remporte le match !`;
+ render();
+}
+
+function resetLeg(){
+ players.forEach(p=>{
+   p.score=document.getElementById("gameType").value==="Cricket"?{15:0,16:0,17:0,18:0,19:0,20:0,25:0}:startingScore();
+ });
+ dartsThrown=0;
+ currentPlayer=0;
+ render();
+}
+
+function endTurn(){dartsThrown=0;currentPlayer=(currentPlayer+1)%players.length;render();}
+
+function renderHistory(){
+ let html="<h3>📈 Historique joueurs</h3><table><tr><th>Joueur</th><th>Matchs</th><th>Victoires</th><th>Moyenne globale</th></tr>";
+ for(let p in history){
+   const avg=history[p].totalThrows?(history[p].totalPoints/history[p].totalThrows).toFixed(2):0;
+   html+=`<tr><td>${p}</td><td>${history[p].games}</td><td>${history[p].wins}</td><td>${avg}</td></tr>`;
+ }
+ html+="</table>";
+ document.getElementById("historyCard").innerHTML=html;
+}
+
+function resetGame(){players=[];currentPlayer=0;dartsThrown=0;winner=null;document.getElementById("players").innerHTML="";document.getElementById("winnerCard").style.display="none";}
+</script>
+</body>
+</html>
